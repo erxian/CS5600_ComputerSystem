@@ -15,6 +15,9 @@
 * the maximum amount of memory that can be allocated at a time is
 * equal to a single page.
 *
+* The program managed heap is thread safe since we add mutex lock to
+* funtion allocate_page(), write_data(), read_data() and free_page().
+*
 */
 
 #include <stdio.h>
@@ -31,7 +34,7 @@ pthread_mutex_t vm_mutex = PTHREAD_MUTEX_INITIALIZER;
 pte_t page_table[NUM_PAGES];
 
 // Physical memory array
-frame_t physical_memory[NUM_FRAMES];
+frame_t phys_mem[NUM_FRAMES];
 
 // List of free frames in physical memory
 int free_frame_list[NUM_FRAMES];
@@ -43,7 +46,9 @@ int fifo_queue[NUM_FRAMES];
 int fifo_queue_head = 0;
 int fifo_queue_tail = 0;
 
-// Initialize virtual memory page table by setting all entries to invalid.
+/**
+ * init_page_table - Initialize virtual memory page table by setting all entries to invalid.
+ */
 void init_page_table() {
     for (int i = 0; i < NUM_PAGES; i++) {
         page_table[i].valid = false;
@@ -53,15 +58,19 @@ void init_page_table() {
     }
 }
 
-// Initialize physical memory and free frame list
+/**
+ * init_physical_memory - Initialize physical memory and free frame list
+ */
 void init_physical_memory() {
     for (int i = 0; i < NUM_FRAMES; i++) {
-        physical_memory[i].page_num = -1;
+        phys_mem[i].page_num = -1;
         free_frame_list[i] = i;
     }
 }
 
-// Initializes the disk by creating a swap file with empty pages.
+/**
+ * init_disk - Initializes the disk by creating a swap file with empty pages.
+ */
 void init_disk() {
     FILE *swap_file = fopen(SWAP_FILE_NAME, "wb");
     if (swap_file == NULL) {
@@ -75,9 +84,12 @@ void init_disk() {
     fclose(swap_file);
 }
 
-// Deallocates a page in the virtual memory page table by setting the entry to invalid.
-// Parameters:
-//   page_num - the page number to be deallocated
+/**
+ * deallocate_page - Deallocates a page in the virtual memory page table
+ * by setting the entry to invalid.
+ *
+ * @param: page_num - the page number to be deallocated
+ */
 void deallocate_page(int page_num) {
     page_table[page_num].valid = false;
     page_table[page_num].frame_num = -1;
@@ -85,10 +97,13 @@ void deallocate_page(int page_num) {
     page_table[page_num].referenced = false;
 }
 
-// Loads a page from disk into physical memory.
-// Parameters:
-//   page_num - the page number to be loaded from disk
-//   frame_num - the frame number in physical memory to load the page into
+/**
+ * load_page - Loads a page from disk into physical memory.
+ * 
+ * @param:
+ *       page_num - the page number to be loaded from disk
+ *       frame_num - the frame number in physical memory to load the page into
+ */
 void load_page(int page_num, int frame_num) {
     FILE *swap_file = fopen(SWAP_FILE_NAME, "rb");
     if (swap_file == NULL) {
@@ -99,7 +114,7 @@ void load_page(int page_num, int frame_num) {
     int disk_offset = page_num * PAGE_SIZE;
     fseek(swap_file, disk_offset, SEEK_SET);
     // Read the data from the disk into the physical memory frame
-    fread(physical_memory[frame_num].data, sizeof(char), PAGE_SIZE, swap_file);
+    fread(phys_mem[frame_num].data, sizeof(char), PAGE_SIZE, swap_file);
     fclose(swap_file);
 
     // Update the page table entry for the loaded page
@@ -109,13 +124,16 @@ void load_page(int page_num, int frame_num) {
     page_table[page_num].referenced = true;
 
     // Update the frame information for the loaded page
-    physical_memory[frame_num].page_num = page_num;
+    phys_mem[frame_num].page_num = page_num;
 }
 
-// Saves a page from physical memory to disk.
-// Parameters:
-//   page_num - the page number to be saved to disk
-//   frame_num - the frame number in physical memory containing the page to save
+/**
+ * save_page - Saves a page from physical memory to disk.
+ *
+ * @param:
+ *      page_num - the page number to be saved to disk
+ *      frame_num - the frame number in physical memory containing the page to save
+ */
 void save_page(int page_num, int frame_num) {
     FILE *swap_file = fopen(SWAP_FILE_NAME, "rb+");
     if (swap_file == NULL) {
@@ -127,17 +145,20 @@ void save_page(int page_num, int frame_num) {
 
     fseek(swap_file, disk_offset, SEEK_SET);
     // Write the data from the physical memory frame to the disk
-    fwrite(physical_memory[frame_num].data, sizeof(char), PAGE_SIZE, swap_file);
+    fwrite(phys_mem[frame_num].data, sizeof(char), PAGE_SIZE, swap_file);
     fclose(swap_file);
 
     // Update the page table entry for the saved page
     deallocate_page(page_num);
     // Update the frame information for the saved page
-    physical_memory[frame_num].page_num = -1;
+    phys_mem[frame_num].page_num = -1;
 }
 
-// Finds the first available free frame in the physical memory.
-// Returns the frame number if a free frame is found, or -1 if no free frames are available.
+/**
+ * find_free_frame - Finds the first available free frame in the physical memory.
+ *
+ * @return int: the frame number if a free frame is found, or -1 if no free frames are available.
+ */
 int find_free_frame() {
     if (free_frame_list[0] != -1) {
         int free_frame_num = free_frame_list[0];
@@ -150,17 +171,24 @@ int find_free_frame() {
     return -1; // no free frames available
 }
 
-// Adds a page to the FIFO queue for the page replacement algorithm.
-// Parameters:
-//   page_num - the page number to be added to the FIFO queue
+/**
+ * add_to_fifo_queue - Adds a page to the FIFO queue for the page
+ * replacement algorithm.
+ *
+ * @param: page_num - the page number to be added to the FIFO queue
+ */
 void add_to_fifo_queue(int page_num) {
     page_table[page_num].referenced = true;
     fifo_queue[fifo_queue_tail] = page_num;
     fifo_queue_tail = (fifo_queue_tail + 1) % NUM_FRAMES;
 }
 
-// Removes the oldest page from the FIFO queue for the page replacement algorithm.
-// Returns the removed page number.
+/**
+ * remove_from_fifo_queue - Removes the oldest page from the FIFO queue
+ * for the page replacement algorithm.
+ *
+ * @return int: the removed page number.
+ */
 int remove_from_fifo_queue() {
     int page_num = fifo_queue[fifo_queue_head];
     fifo_queue[fifo_queue_head] = -1;
@@ -168,11 +196,17 @@ int remove_from_fifo_queue() {
     return page_num;
 }
 
-// Implements the page replacement algorithm using the First-In, First-Out (FIFO) method.
-// Evicts the oldest page from the FIFO queue and returns its frame number.
+/**
+ * page_replacement_fifo - Implements the page replacement algorithm using
+ * the First-In, First-Out (FIFO) method. Evicts the oldest page from the FIFO
+ * queue and returns its frame number.
+ *
+ * @return int: the frame number whose page was evicted.
+ */
 int page_replacement_fifo() {
+    int frame_num = -1;
     int page_num = remove_from_fifo_queue();
-    int frame_num = page_table[page_num].frame_num;
+    frame_num = page_table[page_num].frame_num;
     printf("remove page %d from FIFO queue, it's frame num is %d\n", page_num, frame_num);
     if (page_table[page_num].dirty) {
         save_page(page_num, frame_num);
@@ -183,11 +217,14 @@ int page_replacement_fifo() {
     return frame_num;
 }
 
-// Allocates a frame for a page in the physical memory. If no free frames are available,
-// it calls the page_replacement_fifo() function to evict a page and use its frame.
-// Parameters:
-//   page_num - the page number for which a frame needs to be allocated
-// Returns the frame number allocated to the page.
+/**
+ * allocate_frame - Allocates a frame for a page in the physical memory.
+ * If no free frames are available, it calls the page_replacement_fifo()
+ * function to evict a page and use its frame.
+ *
+ * @param: page_num - the page number for which a frame needs to be allocated
+ * @return int: the frame number allocated to the page.
+ */
 int allocate_frame(int page_num) {
     int frame_num = find_free_frame();
     if (frame_num == -1) {
@@ -199,12 +236,16 @@ int allocate_frame(int page_num) {
     return frame_num;
 }
 
-// Reads data from a virtual memory address into a buffer.
-// Parameters:
-//   address - the virtual memory address to read data from
-//   buffer - the buffer to store the read data
-//   s - the size of the data to read (in bytes)
+/**
+ * read_data - Reads data from a virtual memory address into a buffer.
+ *
+ * @param:
+ *      address - the virtual memory address to read data from
+ *      buffer - the buffer to store the read data
+ *      s - the size of the data to read (in bytes)
+ */
 void read_data(int address, char *buffer, int s) {
+    pthread_mutex_lock(&vm_mutex);
     int size = PAGE_SIZE;
     int page_num = address / PAGE_SIZE;
     int page_offset = address % PAGE_SIZE;
@@ -212,23 +253,28 @@ void read_data(int address, char *buffer, int s) {
     // Check if the requested page is in physical memory
     if (page_table[page_num].valid) {
         // Page hit
-        printf("Page success: find page %d in physical memory\n", page_num);
-        memcpy(buffer, &physical_memory[frame_num].data, size);
+        //printf("Page success: find page %d in physical memory\n", page_num);
+        memcpy(buffer, &phys_mem[frame_num].data, size);
         page_table[page_num].referenced = true;
     } else {
         // Page fault
         printf("Page Fault: page %d not in physical memory\n", page_num);
         frame_num = allocate_frame(page_num);
-        memcpy(buffer, &physical_memory[frame_num].data, size);
+        memcpy(buffer, &phys_mem[frame_num].data, size);
     }
+    pthread_mutex_unlock(&vm_mutex);
 }
 
-// Writes data to a virtual memory address from a buffer.
-// Parameters:
-//   address - the virtual memory address to write data to
-//   buffer - the buffer containing the data to be written
-//   s - the size of the data to write (in bytes)
+/**
+ * write_data - Writes data to a virtual memory address from a buffer.
+ * 
+ * @param:
+ *      address - the virtual memory address to write data to
+ *      buffer - the buffer containing the data to be written
+ *      s - the size of the data to write (in bytes)
+ */
 void write_data(int address, char *buffer, int s) {
+    pthread_mutex_lock(&vm_mutex);
     int size = PAGE_SIZE;
     int page_num = address / PAGE_SIZE;
     int page_offset = address % PAGE_SIZE;
@@ -237,24 +283,30 @@ void write_data(int address, char *buffer, int s) {
     // Check if the requested page is in physical memory
     if (page_table[page_num].valid) {
         // Page hit
-        printf("Page success: find page %d in physical memory\n", page_num);
-        memcpy(&physical_memory[frame_num].data, buffer, size);
+        //printf("Page success: find page %d in physical memory\n", page_num);
+        memcpy(&phys_mem[frame_num].data, buffer, size);
         page_table[page_num].dirty = true;
         page_table[page_num].referenced = true;
     } else {
         // Page fault
         printf("Page Fault: page %d not in physical memory\n", page_num);
         frame_num = allocate_frame(page_num);
-        memcpy(&physical_memory[frame_num].data, buffer, size);
+        memcpy(&phys_mem[frame_num].data, buffer, size);
         page_table[page_num].dirty = true;
     }
+    pthread_mutex_unlock(&vm_mutex);
 }
 
-// Allocates a page in virtual memory by finding an invalid entry in the page table
-// and loading the corresponding page into a frame in the physical memory. In this
-// implementation, we'll allocate one page for each single call. 
-// Returns the allocated page number, or -1 if no free pages are available.
+/**
+ * allocate_page - Allocates a page in virtual memory by finding an invalid
+ * entry in the page table and loading the corresponding page into a frame
+ * in the physical memory. In this implementation, we'll allocate one page
+ * for each single call. 
+ * 
+ * @return int: return the allocated page number, or -1 if no free pages are available.
+ */
 int allocate_page() {
+    pthread_mutex_lock(&vm_mutex);
     for (int i = 0; i < NUM_PAGES; i++) {
         if (!page_table[i].valid) {
             int frame_num = allocate_frame(i);
@@ -263,71 +315,57 @@ int allocate_page() {
                 page_table[i].frame_num = frame_num;
                 page_table[i].dirty = false;
                 page_table[i].referenced = false;
+                pthread_mutex_unlock(&vm_mutex);
                 return i;
             }
         }
     }
+    pthread_mutex_unlock(&vm_mutex);
     return -1; // no free pages available
 }
 
-int main() {
-    // Initialize the virtual memory system
-    init_page_table();
-    init_physical_memory();
-    init_disk();
+/**
+ * free_page - Deallocates a page in virtual memory and releases the associated
+ * physical memory frame.
+ *
+ * This function deallocates a page in virtual memory, updates the page table entry,
+ * and releases the associated physical memory frame back to the free frame list.
+ * If the page has been marked as "dirty," the function saves the page to disk before
+ * deallocating it.
+ *
+ * @param page_num: The page number of the page to be deallocated.
+ */
+void free_page(int page_num) {
+    pthread_mutex_lock(&vm_mutex);
+    // Check if the page is valid and in physical memory
+    if (page_table[page_num].valid) {
+        int frame_num = page_table[page_num].frame_num;
 
-    // Allocate some pages in virtual memory
-    int page0 = allocate_page();
-    printf("success allocate page %d\n", page0);
+        // Save the page to disk if it is dirty
+        if (page_table[page_num].dirty) {
+            save_page(page_num, frame_num);
+        }
 
-    int page1 = allocate_page();
-    printf("success allocate page %d\n", page1);
+        // Invalidate the page in the page table
+        deallocate_page(page_num);
 
-    int page2 = allocate_page();
-    printf("success allocate page %d\n", page2);
+        // Add the freed frame back to the free_frame_list
+        for (int i = 0; i < NUM_FRAMES; i++) {
+            if (free_frame_list[i] == -1) {
+                free_frame_list[i] = frame_num;
+                break;
+            }
+        }
 
-    int page3 = allocate_page();
-    printf("success allocate page %d\n", page3);
-
-    // Write some data to the allocated pages
-    write_data(page0 * PAGE_SIZE, "Hello, World!", 14);
-    printf("success write data to page %d\n", page0);
-    write_data(page1 * PAGE_SIZE, "This is page 1.", 16);
-    printf("success write data to page %d\n", page1);
-    write_data(page2 * PAGE_SIZE, "Another page, page 2.", 21);
-    printf("success write data to page %d\n", page2);
-    write_data(page3 * PAGE_SIZE, "Page 3 is here!", 15);
-    printf("success write data to page %d\n\n", page3);
-
-    printf("Now The Physical Memory is FULL, Let's Allocate a New Page!!\n\n");
-    int page4 = allocate_page();
-    printf("success allocate page %d\n", page4);
-    write_data(page4 * PAGE_SIZE, "The last page, page 4.", 22);
-    printf("success write data to page %d\n\n", page4);
-
-    // Read and print the data from the allocated pages
-    char buffer[PAGE_SIZE];
-
-    printf("Let's Read data from page0, some replacement will occur!!\n");
-    read_data(page0 * PAGE_SIZE, buffer, 14);
-    printf("Data in page0: %s\n\n", buffer);
-
-    printf("Let's Read data from page1, some replacement will occur!!\n");
-    read_data(page1 * PAGE_SIZE, buffer, 16);
-    printf("Data in page1: %s\n\n", buffer);
-
-    printf("Let's Read data from page2, some replacement will occur!!\n");
-    read_data(page2 * PAGE_SIZE, buffer, 21);
-    printf("Data in page2: %s\n\n", buffer);
-
-    printf("Let's Read data from page3, some replacement will occur!!\n");
-    read_data(page3 * PAGE_SIZE, buffer, 15);
-    printf("Data in page3: %s\n\n", buffer);
-
-    printf("Let's Read data from page4, some replacement will occur!!\n");
-    read_data(page4 * PAGE_SIZE, buffer, 22);
-    printf("Data in page4: %s\n\n", buffer);
-
-    return 0;
+        // Remove the page from the FIFO queue if necessary
+        for (int i = 0; i < NUM_FRAMES; i++) {
+            if (fifo_queue[i] == page_num) {
+                fifo_queue[i] = -1;
+                break;
+            }
+        }
+    } else {
+        printf("Warning: trying to free an invalid page %d\n", page_num);
+    }
+    pthread_mutex_unlock(&vm_mutex);
 }
-

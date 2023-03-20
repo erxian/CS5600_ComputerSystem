@@ -41,5 +41,6 @@ int allocate_frame(int page_num);
 void read_data(int address, char *buffer, int s);
 void write_data(int address, char *buffer, int s);
 int allocate_page();
+void free_page(int page_num);
 
 #endif // VIRTUAL_MEMORY_H
