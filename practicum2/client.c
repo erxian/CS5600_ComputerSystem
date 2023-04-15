@@ -138,17 +138,6 @@ void put(const char *local_file_path, const char *remote_file_path) {
   }
 
   fclose(local_file);
-  
-  // Receive the file information
-  char receive_buffer[8192];
-  ssize_t bytes_received;
-  if ((bytes_received = recv(socket_desc, receive_buffer, sizeof(receive_buffer), 0)) > 0)
-  {
-    receive_buffer[bytes_received] = '\0';
-    printf("Server response: %s\n", receive_buffer);
-  }
-
-  // Close the socket
   close(socket_desc);
 }
 

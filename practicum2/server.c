@@ -96,7 +96,7 @@ void handle_put(int client_sock, char *file_path, char *client_message) {
     while ((bytes_received = recv(client_sock, buffer, sizeof(buffer), 0)) > 0) {
         fwrite(buffer, 1, bytes_received, remote_file);
     }
-    
+
     fclose(remote_file);
     strcpy(server_message, "File or directory put successfully.");
     send(client_sock, server_message, strlen(server_message), 0);
