@@ -42,7 +42,6 @@ int main(int argc, char *argv[])
     if(argc == 3){
       // Find the last occurrence of '/' in the path string, return 'NULL' if no occurence of '/'
       local_file_path = strrchr(argv[2], '/');; 
-      printf("local path is: %s", local_file_path);
       if(local_file_path == NULL){
         local_file_path = argv[2];
       }else{
