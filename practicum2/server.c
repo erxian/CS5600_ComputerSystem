@@ -86,10 +86,11 @@ void handle_rm(int client_sock, char *path) {
 
 void handle_put(int client_sock, char *file_path, char *client_message) {
     char server_message[2000];
+    char buffer[8192];
     memset(server_message, '\0', sizeof(server_message));
+    memset(buffer, '\0', sizeof(buffer));
 
     // Receive the file data from the client and save it to the remote file
-    char buffer[8192];
     ssize_t bytes_received;
     FILE *remote_file = fopen(file_path, "wb");
 
@@ -98,8 +99,8 @@ void handle_put(int client_sock, char *file_path, char *client_message) {
     }
 
     fclose(remote_file);
-    strcpy(server_message, "File or directory put successfully.");
-    send(client_sock, server_message, strlen(server_message), 0);
+    //strcpy(server_message, "File or directory put successfully.");
+    //send(client_sock, server_message, strlen(server_message), 0);
 }
 
 int main(void)

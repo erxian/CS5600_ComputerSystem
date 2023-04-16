@@ -137,6 +137,9 @@ void put(const char *local_file_path, const char *remote_file_path) {
       send(socket_desc, buffer, bytes_read, 0);
   }
 
+  // Send the end-of-file marker
+  send(socket_desc, buffer, 0, 0);
+
   fclose(local_file);
   close(socket_desc);
 }
