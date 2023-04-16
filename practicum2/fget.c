@@ -37,13 +37,26 @@ int main(int argc, char *argv[])
 
   if (strcmp(command, "GET") == 0)
   {
-    if (argc < 4)
-    {
-      printf("Usage: %s GET remote_file_path local_file_path\n", argv[0]);
+    const char *remote_file_path;
+    const char *local_file_path;
+    if(argc == 3){
+      // Find the last occurrence of '/' in the path string, return 'NULL' if no occurence of '/'
+      local_file_path = strrchr(argv[2], '/');; 
+      printf("local path is: %s", local_file_path);
+      if(local_file_path == NULL){
+        local_file_path = argv[2];
+      }else{
+        //omit the leading '/'
+        local_file_path++;
+      }
+      remote_file_path = argv[2];
+    }else if(argc == 4){
+      local_file_path = argv[2]; 
+      remote_file_path = argv[3];
+    }else{
+      printf("Usage: %s GET (optional)local_file_path remote_file_path\n", argv[0]);
       return -1;
     }
-    const char *remote_file_path = argv[2];
-    const char *local_file_path = argv[3];
     exec_get(remote_file_path, local_file_path);
   }
   else if (strcmp(command, "INFO") == 0)
@@ -58,8 +71,25 @@ int main(int argc, char *argv[])
   }
   else if (strcmp(argv[1], "PUT") == 0)
   {
-    const char *local_file_path = argv[2]; 
-    const char *remote_file_path = argv[3];
+    const char *remote_file_path;
+    const char *local_file_path;
+    if(argc == 3){
+      // Find the last occurrence of '/' in the path string, return 'NULL' if no occurence of '/'
+      remote_file_path = strrchr(argv[2], '/');; 
+      if(remote_file_path == NULL){
+        remote_file_path = argv[2];
+      }else{
+        //omit the leading '/'
+        remote_file_path++;
+      }
+      local_file_path = argv[2];
+    }else if(argc == 4){
+      local_file_path = argv[2]; 
+      remote_file_path = argv[3];
+    }else{
+      printf("Usage: %s PUT local_file_path (optional)remote_file_path\n", argv[0]);
+      return -1;
+    }
     exec_put(local_file_path, remote_file_path);
   }
   else if (strcmp(argv[1], "RM") == 0)
