@@ -9,6 +9,12 @@
 #include <time.h>
 #include <signal.h>
 #include "config.h"
+#include <pthread.h>
+typedef struct {
+  int client_sock;
+  AppConfig config;
+} ClientData;
+
 
 // Signal handler for SIGINT
 void sigint_handler(int sig_num) {
@@ -103,9 +109,75 @@ void handle_put(int client_sock, char *file_path, char *client_message) {
     //send(client_sock, server_message, strlen(server_message), 0);
 }
 
+// Thread function to handle a single client
+void *handle_client(void *arg)
+{
+  long int thread_id = (long int)pthread_self();
+  printf("A new client thread ID: %ld has been created\n", thread_id);
+
+  ClientData *client_data = (ClientData *)arg;
+  int client_sock = client_data->client_sock;
+  AppConfig config = client_data->config;
+
+  char server_message[8196], client_message[8196];
+
+   // Clean buffers:
+  memset(server_message, '\0', sizeof(server_message));
+  memset(client_message, '\0', sizeof(client_message));
+
+  // Receive client's message:
+  if (recv(client_sock, client_message, sizeof(client_message), 0) < 0)
+  {
+    printf("Couldn't receive\n");
+    return NULL;
+  }
+
+  // Parse the command and file path from the client message
+  char command[16], file_path[4096], full_path[4608];
+  sscanf(client_message, "%15s %4095s", command, file_path);
+
+  // Combine the USB volume path and the file path from the client message
+  snprintf(full_path, sizeof(full_path), "%s/%s", config.usb.volume_path, file_path);
+
+  // Handle the GET and INFO commands
+  if (strcmp(command, "GET") == 0)
+  {
+    send_file(client_sock, full_path);
+  }
+  else if (strcmp(command, "INFO") == 0)
+  {
+    send_file_info(client_sock, full_path);
+  }
+  else if (strcmp(command, "MD") == 0)
+  {
+    handle_md(client_sock, full_path);
+  }
+  else if (strcmp(command, "PUT") == 0)
+  {
+    handle_put(client_sock, full_path, client_message);
+  }
+  else if (strcmp(command, "RM") == 0)
+  {
+    handle_rm(client_sock, full_path);
+  }
+  else
+  {
+    printf("Unknown command: %s\n", command);
+  }
+  // Close the client socket after serving the request
+  close(client_sock);
+
+  // Free the memory allocated for the client data
+  free(client_data);
+
+  // Exit the thread
+  pthread_exit(NULL);
+}
+
+
 int main(void)
 {
-  // Register the SIGINT handler
+   // Register the SIGINT handler
   signal(SIGINT, sigint_handler);
 
   AppConfig config;
@@ -115,16 +187,11 @@ int main(void)
     return -1;
   }
 
-  int socket_desc, client_sock;
-  socklen_t client_size;
+  // ... (rest of the code until while loop)
+  int socket_desc,client_sock;
+
   struct sockaddr_in server_addr, client_addr;
-  char server_message[8196], client_message[8196];
-
-   // Clean buffers:
-  memset(server_message, '\0', sizeof(server_message));
-  memset(client_message, '\0', sizeof(client_message));
-
-  // Create socket:
+    // Create socket:
   socket_desc = socket(AF_INET, SOCK_STREAM, 0);
 
   if(socket_desc < 0){
@@ -156,7 +223,7 @@ int main(void)
   while(1)
   {
     // Accept an incoming connection:
-    client_size = sizeof(client_addr);
+    socklen_t client_size = sizeof(client_addr);
     client_sock = accept(socket_desc, (struct sockaddr*)&client_addr, &client_size);
 
     if (client_sock < 0){
@@ -166,51 +233,28 @@ int main(void)
 
     printf("Client connected at IP: %s and port: %i\n",
            inet_ntoa(client_addr.sin_addr),
-           ntohs(client_addr.sin_port)); 
+           ntohs(client_addr.sin_port));
 
-    // Receive client's message:
-    if (recv(client_sock, client_message, sizeof(client_message), 0) < 0)
-    {
-      printf("Couldn't receive\n");
+    // Allocate memory for client data and set the values
+    ClientData *client_data = (ClientData *)malloc(sizeof(ClientData));
+    client_data->client_sock = client_sock;
+    client_data->config = config;
+
+    // Create a new thread for each client connection
+    pthread_t client_thread;
+    int result;
+    result = pthread_create(&client_thread, NULL, handle_client, (void *)client_data);
+    if (result != 0) {
+      printf("Failed to assgin a new thread to client\n");
       return -1;
     }
-    // Parse the command and file path from the client message
-    char command[16], file_path[4096], full_path[4608];
-    sscanf(client_message, "%15s %4095s", command, file_path);
-
-    // Combine the USB volume path and the file path from the client message
-    snprintf(full_path, sizeof(full_path), "%s/%s", config.usb.volume_path, file_path);
-
-    // Handle the GET and INFO commands
-    if (strcmp(command, "GET") == 0)
-    {
-      send_file(client_sock, full_path);
+    // Detach the thread so its resources are released when it finishes
+    pthread_detach(client_thread);
+    if (result != 0) {
+      printf("Failed to detach the thread\n");
+      return -1;
     }
-    else if (strcmp(command, "INFO") == 0)
-    {
-      send_file_info(client_sock, full_path);
-    }
-    else if (strcmp(command, "MD") == 0)
-    {
-      handle_md(client_sock, full_path);
-    }
-    else if (strcmp(command, "PUT") == 0)
-    {
-      handle_put(client_sock, full_path, client_message);
-    }
-    else if (strcmp(command, "RM") == 0)
-    {
-      handle_rm(client_sock, full_path);
-    }
-    else
-    {
-      printf("Unknown command: %s\n", command);
-    }
-
-    // Close the client socket after serving the request
-    close(client_sock);
   }
-
   // Closing the server socket (this will not be reached unless the loop is broken)
   close(socket_desc);
 
