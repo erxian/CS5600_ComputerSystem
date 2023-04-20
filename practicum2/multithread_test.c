@@ -1,18 +1,17 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <pthread.h>
+#include <ctype.h>
+#include <string.h>
 
-
-
-
-#define NUM_CLIENT_THREADS 1 
+#define NUM_CLIENT_THREADS 4 
 #define REMOTE_FILE_NUM 4
-#define REMOTE_FILE_PATH_0 "cs5600RFS/file1.txt" 
-#define REMOTE_FILE_PATH_1 "cs5600RFS/file2.txt" 
-#define REMOTE_FILE_PATH_2 "cs5600RFS/file3.txt" 
-#define REMOTE_FILE_PATH_3 "cs5600RFS/file4.txt" 
+#define REMOTE_FILE_PATH_0 "file1.txt" 
+#define REMOTE_FILE_PATH_1 "file2.txt" 
+#define REMOTE_FILE_PATH_2 "file3.txt" 
+#define REMOTE_FILE_PATH_3 "file4.txt" 
 
-#define LOCAL_FILE_PATH_0 "localFile1.txt"
+#define REMOTE_PATH "cs5600RFS"
 
 int run_command(char *command){
     int status = system(command);
@@ -24,9 +23,9 @@ int run_command(char *command){
     return 0;
 }
 
-char* get_command_builder(const char *remote_file_path, const char *local_file_path, long int thread_id){
+char* get_command_builder(const char *remote_file_path, long int thread_id){
     char* command = (char*)malloc(sizeof(char) * 1000);
-    sprintf(command, "./fget GET %s %s", remote_file_path, local_file_path);
+    sprintf(command, "./fget GET %s", remote_file_path);
     printf("Thread ID is  %ld. ", thread_id);
     printf("Execute GET command\n");
     return command;
@@ -40,9 +39,26 @@ char* info_command_builder(const char *remote_file_path, long int thread_id){
     return command;
 }
 
+char* generate_remote_folder_name(const char *remote_file_path){
+    const char *file_number_str = remote_file_path;
+    while (*file_number_str && !isdigit(*file_number_str)) {
+        file_number_str++;
+    }
+    int file_number = atoi(file_number_str);
+    
+    char *remote_folder_name = NULL;
+    int result = asprintf(&remote_folder_name, "cs5600_f%d", file_number);
+    if (result == -1) {
+        fprintf(stderr, "Failed to allocate memory for folder name\n");
+        return NULL;
+    }
+    return remote_folder_name;
+}
+
 char* md_command_builder(const char *remote_file_path, long int thread_id){
+    char* remote_folder_name = generate_remote_folder_name(remote_file_path);
     char* command = (char*)malloc(sizeof(char) * 1000);
-    sprintf(command, "./fget MD %s", remote_file_path);
+    sprintf(command, "./fget MD %s", remote_folder_name);
     printf("Thread ID is  %ld. ", thread_id);
     printf("Execute MD command\n");
     return command;
@@ -75,12 +91,28 @@ void *worker(void *arg) {
     char* remote_file_path = (char*)arg;
     long int thread_id = (long int)pthread_self();
     char* command;
-    run_command(get_command_builder(remote_file_path, LOCAL_FILE_PATH_0,thread_id));
-    run_command(info_command_builder(remote_file_path,thread_id));
-    run_command(md_command_builder(remote_file_path,thread_id));
-    run_command(put_command_builder(LOCAL_FILE_PATH_0, remote_file_path,thread_id));
-    //run_command(info_command_builder(remote_file_path,thread_id));
-    run_command(rm_command_builder(remote_file_path,thread_id));
+    run_command(get_command_builder(remote_file_path, thread_id));
+    run_command(info_command_builder(remote_file_path, thread_id));
+    run_command(md_command_builder(remote_file_path, thread_id));
+    
+    // Allocate memory for the new local file path
+    char* local_file_path = (char*) malloc(strlen(remote_file_path) + 1);
+
+    // Copy the contents of remote_file_path into local_file_path
+    strcpy(local_file_path, remote_file_path);
+    char* remote_folder_name = generate_remote_folder_name(remote_file_path);
+    int merged_length = strlen(remote_folder_name) + strlen(remote_file_path) + 1 + 1;
+    char* remote_put_file_path = (char*) malloc(merged_length * sizeof(char));
+
+    if (remote_put_file_path == NULL) {
+        printf("Memory allocation failed\n");
+        return NULL;
+    }
+
+    snprintf(remote_put_file_path, merged_length, "%s/%s", remote_folder_name, remote_file_path);
+    run_command(put_command_builder(local_file_path, remote_put_file_path, thread_id));
+    free(remote_put_file_path);
+    //run_command(rm_command_builder(remote_file_path, thread_id));
     return NULL;
 }
 

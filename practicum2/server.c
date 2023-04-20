@@ -10,6 +10,8 @@
 #include <signal.h>
 #include "config.h"
 #include <pthread.h>
+#include <ftw.h>
+
 typedef struct {
   int client_sock;
   AppConfig config;
@@ -77,15 +79,50 @@ void handle_md(int client_sock, char *dir_path) {
     send(client_sock, server_message, strlen(server_message), 0);
 }
 
+// Helper function to remove files and directories using nftw
+static int remove_item(const char *path, const struct stat *sb, int typeflag, struct FTW *ftwbuf) {
+    // Ignore hidden files with "._" prefix
+    if (strstr(path, "/._") != NULL) {
+        return 0;
+    }
+
+    // Remove the file or directory at the given path
+    int result = remove(path);
+    if (result) {
+        perror(path);
+    }
+    return result;
+}
+
 void handle_rm(int client_sock, char *path) {
     char server_message[2000];
     memset(server_message, '\0', sizeof(server_message));
 
-    if (remove(path) == 0) {
-        strcpy(server_message, "File or directory removed successfully.");
+    // Check if the path is a directory
+    struct stat path_stat;
+    stat(path, &path_stat);
+
+    if (S_ISDIR(path_stat.st_mode)) {
+        // Use nftw to remove directories and their contents
+        if (nftw(path, remove_item, 64, FTW_DEPTH | FTW_PHYS) == 0) {
+            strcpy(server_message, "Directory and its contents removed successfully.");
+        } else {
+            strcpy(server_message, "Failed to remove directory and its contents.");
+        }
     } else {
-        strcpy(server_message, "Failed to remove file or directory.");
+        // Remove a single file
+        if (remove(path) == 0) {
+            strcpy(server_message, "File removed successfully.");
+        } else {
+            strcpy(server_message, "Failed to remove file.");
+        }
     }
+
+    //if (remove(path) == 0) {
+    //    strcpy(server_message, "File or directory removed successfully.");
+    //} else {
+    //    strcpy(server_message, "Failed to remove file or directory.");
+    //}
 
     send(client_sock, server_message, strlen(server_message), 0);
 }
@@ -95,6 +132,10 @@ void handle_put(int client_sock, char *file_path, char *client_message) {
     char buffer[8192];
     memset(server_message, '\0', sizeof(server_message));
     memset(buffer, '\0', sizeof(buffer));
+    
+    // Send a confirmation message to the client to start sending the file
+    strcpy(server_message, "READY");
+    send(client_sock, server_message, strlen(server_message), 0);
 
     // Receive the file data from the client and save it to the remote file
     ssize_t bytes_received;
@@ -187,11 +228,10 @@ int main(void)
     return -1;
   }
 
-  // ... (rest of the code until while loop)
   int socket_desc,client_sock;
 
   struct sockaddr_in server_addr, client_addr;
-    // Create socket:
+  // Create socket:
   socket_desc = socket(AF_INET, SOCK_STREAM, 0);
 
   if(socket_desc < 0){
@@ -202,7 +242,6 @@ int main(void)
 
   // Set port and IP:
   server_addr.sin_family = AF_INET;
-  //server_addr.sin_port = htons(2000);
   server_addr.sin_port = htons(config.server.port);
   server_addr.sin_addr.s_addr = inet_addr("127.0.0.1");
 

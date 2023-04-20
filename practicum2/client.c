@@ -122,26 +122,37 @@ void put(const char *local_file_path, const char *remote_file_path) {
   int socket_desc = connect_to_server();
 
   char message[8192];
+  memset(message, '\0', sizeof(message));
+
   snprintf(message, sizeof(message), "PUT %s", remote_file_path);
   send(socket_desc, message, strlen(message), 0);
 
-  FILE *local_file = fopen(local_file_path, "rb");
-  if (local_file == NULL) {
-      perror("Error opening file");
-      return;
+  char server_response[2000];
+  memset(server_response, '\0', sizeof(server_response));
+
+  // Wait for the server to send the READY message
+  if (recv(socket_desc, server_response, sizeof(server_response), 0) > 0 &&
+      strcmp(server_response, "READY") == 0) {
+  
+    FILE *local_file = fopen(local_file_path, "rb");
+    if (local_file == NULL) {
+        perror("Error opening file");
+        return;
+    }
+
+    char buffer[8192];
+    memset(buffer, '\0', sizeof(buffer));
+    ssize_t bytes_read;
+    while ((bytes_read = fread(buffer, 1, sizeof(buffer), local_file)) > 0) {
+        send(socket_desc, buffer, bytes_read, 0);
+    }
+
+    // Send the end-of-file marker
+    send(socket_desc, buffer, 0, 0);
+
+    fclose(local_file);
+    close(socket_desc);
   }
-
-  char buffer[8192];
-  ssize_t bytes_read;
-  while ((bytes_read = fread(buffer, 1, sizeof(buffer), local_file)) > 0) {
-      send(socket_desc, buffer, bytes_read, 0);
-  }
-
-  // Send the end-of-file marker
-  send(socket_desc, buffer, 0, 0);
-
-  fclose(local_file);
-  close(socket_desc);
 }
 
 void rm(const char *file_path) {
