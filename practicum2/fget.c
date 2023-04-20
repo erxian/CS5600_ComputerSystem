@@ -3,24 +3,51 @@
 #include <string.h>
 #include "client.h"
 
+/**
+ * exec_get - Downloads a file from the server to the local file system.
+ *
+ * @param: remote_file_path - The path of the file on the server
+ * @param: local_file_path - The path of the file on the local system
+ */
 void exec_get(const char *remote_file_path, const char *local_file_path)
 {
   get(remote_file_path, local_file_path);
 }
 
+/**
+ * exec_info - Requests and displays the information of a file from the server.
+ *
+ * @param: remote_file_path - The path of the file on the server
+ */
 void exec_info(const char *remote_file_path)
 {
   info(remote_file_path);
 }
 
+/**
+ * exec_md - Sends a request to the server to create a new directory.
+ *
+ * @param: remote_file_path - The path of the new directory on the server
+ */
 void exec_md(const char *remote_file_path) {
     md(remote_file_path);
 }
 
+/**
+ * exec_put - Uploads a file from the local file system to the server.
+ *
+ * @param: local_file_path - The path of the file on the local system
+ * @param: remote_file_path - The path of the file on the server
+ */
 void exec_put(const char *local_file_path, const char *remote_file_path) {
     put(local_file_path, remote_file_path);
 }
 
+/**
+ * exec_rm - Sends a request to the server to remove a file.
+ *
+ * @param: remote_file_path - The path of the file to be removed on the server
+ */
 void exec_rm(const char *remote_file_path) {
     rm(remote_file_path);
 }

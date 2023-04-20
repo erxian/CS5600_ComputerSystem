@@ -3,7 +3,9 @@
 
 typedef struct
 {
-  char volume_path[256];
+  char volume_path_1[256];
+  char volume_path_2[256];
+  char last_primary_usb[4096]; // Add this field to store the last used primary USB path
 } USBConfig;
 
 typedef struct

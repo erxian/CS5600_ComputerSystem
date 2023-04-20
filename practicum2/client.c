@@ -7,6 +7,12 @@
 #include "client.h"
 #include "config.h"
 
+/**
+ * connect_to_server - Connects to the server using the information from the
+ * configuration file.
+ *
+ * @return: The socket descriptor if the connection was successful, -1 otherwise
+ */
 int connect_to_server()
 {
   AppConfig config;
@@ -36,7 +42,6 @@ int connect_to_server()
 
   // Set port and IP the same as server-side:
   server_addr.sin_family = AF_INET;
-  //server_addr.sin_port = htons(2000);
   server_addr.sin_port = htons(config.server.port);
   server_addr.sin_addr.s_addr = inet_addr("127.0.0.1");
 
@@ -50,6 +55,13 @@ int connect_to_server()
   return socket_desc;
 }
 
+/**
+ * get - Downloads a file from the server to the local file system.
+ * missing local file name defaults to remote file name
+ *
+ * @param: remote_file_path - The path of the file on the server
+ * @param: local_file_path - The path of the file on the local system
+ */
 void get(const char *remote_file_path, const char *local_file_path)
 {
   int socket_desc = connect_to_server();
@@ -73,6 +85,11 @@ void get(const char *remote_file_path, const char *local_file_path)
   close(socket_desc);
 }
 
+/**
+ * info - Requests and displays the information of a file from the server.
+ *
+ * @param: remote_file_path - The path of the file on the server
+ */
 void info(const char *remote_file_path)
 {
   int socket_desc = connect_to_server();
@@ -95,7 +112,11 @@ void info(const char *remote_file_path)
   close(socket_desc);
 }
 
-
+/**
+ * md - Sends a request to the server to create a new directory.
+ *
+ * @param: remote_file_path - The path of the new directory on the server
+ */
 void md(const char *remote_file_path)
 {
   int socket_desc = connect_to_server();
@@ -118,6 +139,12 @@ void md(const char *remote_file_path)
   close(socket_desc);
 }
 
+/**
+ * put - Uploads a file from the local file system to the server.
+ *
+ * @param: local_file_path - The path of the file on the local system
+ * @param: remote_file_path - The path of the file on the server
+ */
 void put(const char *local_file_path, const char *remote_file_path) {
   int socket_desc = connect_to_server();
 
@@ -155,6 +182,11 @@ void put(const char *local_file_path, const char *remote_file_path) {
   }
 }
 
+/**
+ * rm - Sends a request to the server to remove a file.
+ *
+ * @param: file_path - The path of the file to be removed on the server
+ */
 void rm(const char *file_path) {
   int socket_desc = connect_to_server();
 
